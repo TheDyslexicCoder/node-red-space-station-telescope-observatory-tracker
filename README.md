@@ -1,3 +1,8 @@
+![Node-RED](https://img.shields.io/badge/Node--RED-Flows-red)
+![WorldMap](https://img.shields.io/badge/Worldmap-Live%20Tracking-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+
 # 🌍 node-red-space-station-telescope-observatory-tracker
 
 Live worldmap tracker for multiple **space stations (International Space Station (ISS) & Chinese Space Station (CSS))** and **space telescopes (Hubble Space Telescope, Chandra X-ray Observatory)** using **Node-RED** and **N2YO API**.
