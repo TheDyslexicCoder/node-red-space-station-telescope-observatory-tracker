@@ -64,3 +64,98 @@ Before using this flow, you should have:
 
    ```bash
    git clone https://github.com/TheDyslexicCoder/node-red-space-station-telescope-observatory-tracker.git
+   
+2. **Open Node-RED** and go to the editor:
+
+   ```text
+   http://<your-node-red-ip>:1880
+
+
+3. **Import the flow:**
+
+- Menu → **Import** → **Clipboard**
+- Open `Space Stations & Telescopes Node-Red Flows.json` from this repo
+- Copy its contents into the Import dialog
+- Click **Import**
+
+4. **Edit the HTTP Request nodes** for:
+
+- ISS  
+- CSS  
+- Hubble  
+- Chandra  
+
+In each URL, replace the `apiKey=...` value with **your own N2YO API key**  
+(and optionally update the latitude/longitude to match your observer location).
+
+5. **Deploy** the flow in Node-RED.
+
+6. Open the WorldMap in your browser:
+
+http://<your-node-red-ip>:1880/worldmapSpaceStations
+
+You should now see all four objects moving in real time, each with a detailed popup and regional description.
+
+---
+
+## 🧭 Region Classification
+
+Each popup includes an **“Approx. region”** line that uses latitude and longitude to map the object to a broad, human-friendly area, such as:
+
+- Western / Central / Eastern Europe  
+- North / Central / South America  
+- Caribbean  
+- Northern / Central / Southern Africa  
+- Western / Central / Eastern / Southern / Southeast Asia  
+- Australasia / Oceania  
+- North / South Atlantic, Pacific, Indian Ocean  
+- Arctic / Southern Ocean  
+
+This is intentionally **approximate** (not city-accurate) but far more readable than raw coordinates alone.
+
+---
+
+## 🔧 Customizing
+
+You can easily modify:
+
+- **Update frequency**  
+  - Adjust the Inject node interval (default is ~32 seconds)
+- **Marker colors & icons**  
+  - Edit each `* Attributes` function node (`iconColor`, `layer`, tooltips, etc.)
+- **Region logic**  
+  - Modify the `regionFromLatLon()` function inside each Attributes node
+- **Track behavior**  
+  - Customize `worldmap-tracks` depth, smoothing, or layer assignment
+- **Units**  
+  - Currently displays both metric and US units (km + mi, km/s + mph)
+
+---
+
+## 📚 Background & Previous Version
+
+This repository is the expanded version of my earlier project:
+
+- **Original repo (ISS + CSS only):**  
+https://github.com/TheDyslexicCoder/node-red-space-station-worldmap
+
+The original project focused on tracking only two space stations.  
+
+This upgraded version adds:
+  - Two major space telescopes (Hubble & Chandra)  
+  - Enhanced popups with more scientific data  
+  - Smart regional mapping for better context  
+  - Better formatting, icons, and event handling  
+  - Historical tracks for each spacecraft  
+
+---
+
+## 📄 License
+
+This project is open-source.
+
+If using MIT License, create a `LICENSE` file containing:
+
+```text
+MIT License
+
