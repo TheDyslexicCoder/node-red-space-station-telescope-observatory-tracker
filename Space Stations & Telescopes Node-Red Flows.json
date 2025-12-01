@@ -1,0 +1,476 @@
+[
+    {
+        "id": "9e9d2a92.fa7bd8",
+        "type": "tab",
+        "label": "Space Stations & Telescopes",
+        "disabled": false,
+        "info": "# N2yo Space Tracker for the \n# Space Stations & Telescopes"
+    },
+    {
+        "id": "8ab4999a.25d0a8",
+        "type": "inject",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "",
+        "props": [
+            {
+                "p": "payload",
+                "v": "",
+                "vt": "date"
+            },
+            {
+                "p": "topic",
+                "v": "",
+                "vt": "str"
+            }
+        ],
+        "repeat": "32",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 110,
+        "y": 240,
+        "wires": [
+            [
+                "a8532b79.4cd158",
+                "2a0cd101.7a65ae",
+                "hub-http",
+                "jwst-http"
+            ]
+        ]
+    },
+    {
+        "id": "a8532b79.4cd158",
+        "type": "http request",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "N2YO REST API (ISS)",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "https://api.n2yo.com/rest/v1/satellite/positions/25544/37.84/-122.29/0/2/&apiKey=ENTER API KEY HERE",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 340,
+        "y": 120,
+        "wires": [
+            [
+                "b3fc22ed.85f53"
+            ]
+        ]
+    },
+    {
+        "id": "ade5105b.5b21",
+        "type": "worldmap",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "ISS & CSS Tracker",
+        "lat": "",
+        "lon": "",
+        "zoom": "3.25",
+        "layer": "EsriC",
+        "cluster": "",
+        "maxage": "",
+        "usermenu": "show",
+        "layers": "show",
+        "panit": "false",
+        "panlock": "false",
+        "zoomlock": "false",
+        "hiderightclick": "false",
+        "coords": "deg",
+        "showgrid": "true",
+        "allowFileDrop": "true",
+        "path": "/worldmapSpaceStations",
+        "overlist": "DR,CO,RA,DN,HM",
+        "maplist": "OSMG,OSMC,EsriC,EsriS,EsriT,EsriO,EsriDG,NatGeo,UKOS,OpTop",
+        "mapname": "",
+        "mapurl": "",
+        "mapopt": "",
+        "mapwms": false,
+        "x": 2030,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "b3fc22ed.85f53",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Detailed ISS Position",
+        "func": "// Detailed ISS Position\n\nif (!msg.payload || !msg.payload.positions || !msg.payload.positions[0]) {\n    node.warn(\"ISS: no position data in payload\");\n    return null;\n}\n\nvar raw = msg.payload;                // keep original response\nvar info = raw.info || {};\nvar p = raw.positions[0];\n\nvar satName = info.satname || \"International Space Station\";\nvar ts = p.timestamp || Date.now() / 1000;\nvar dt = new Date(ts * 1000);\n\nmsg.payload = {\n    name: satName,\n    lat: p.satlatitude,\n    lon: p.satlongitude,\n    alt_km: p.sataltitude,     // altitude in km (from N2YO)\n    // speed in km/s (use N2YO if present, else typical ISS speed)\n    vel_kms: (p.satvelocity != null ? p.satvelocity : 7.66),\n    azimuth: p.azimuth,\n    elevation: p.elevation,\n    eclipsed: p.eclipsed,\n    timestamp: ts,\n    localTime: dt.toLocaleString(),\n    source: \"ISS\",\n    raw: raw                   // optional: keep raw response\n};\n\nreturn msg;\n\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 120,
+        "wires": [
+            [
+                "155c6728.3956b9"
+            ]
+        ]
+    },
+    {
+        "id": "155c6728.3956b9",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "ISS Attributes",
+        "func": "// ISS Attributes -> format for worldmap (US units + region)\n\nvar p = msg.payload || {};\nif (p.lat == null || p.lon == null) {\n    node.warn(\"ISS Attributes: missing lat/lon in payload\");\n    return null;\n}\n\n// Helpers\nfunction safeNumber(v) {\n    var n = Number(v);\n    return isFinite(n) ? n : null;\n}\n\nfunction kmToMi(km) {\n    var n = safeNumber(km);\n    if (n == null) return null;\n    return n * 0.621371;\n}\n\nfunction kmsToMph(kms) {\n    var n = safeNumber(kms);\n    if (n == null) return null;\n    return n * 2236.9356;  // 1 km/s ≈ 2236.94 mph\n}\n\nfunction safeFixed(v, dec) {\n    var n = safeNumber(v);\n    if (n == null) return \"n/a\";\n    return n.toFixed(dec);\n}\n\nfunction degToCompass(deg) {\n    var n = safeNumber(deg);\n    if (n == null) return \"n/a\";\n    var dirs = [\"N\", \"NE\", \"E\", \"SE\", \"S\", \"SW\", \"W\", \"NW\", \"N\"];\n    return dirs[Math.round(n / 45)];\n}\n\nfunction regionFromLatLon(lat, lon) {\n    lat = safeNumber(lat);\n    lon = safeNumber(lon);\n    if (lat == null || lon == null) return \"Unknown region\";\n\n    // Poles\n    if (lat > 80) return \"over the Arctic region\";\n    if (lat < -60) return \"over the Southern Ocean / near Antarctica\";\n\n    // --- AMERICAS ---\n\n    // North America sub-regions\n    if (lon >= -170 && lon <= -50 && lat >= 24) {\n        if (lon < -120) return \"over Western North America\";\n        if (lon < -90)  return \"over Central North America\";\n        return \"over Eastern North America\";\n    }\n\n    // Central America\n    if (lon >= -100 && lon <= -75 && lat >= 7 && lat < 24) {\n        return \"over Central America\";\n    }\n\n    // Caribbean\n    if (lon >= -90 && lon <= -60 && lat >= 10 && lat <= 27) {\n        return \"over the Caribbean region\";\n    }\n\n    // South America (with N / Central / S split)\n    if (lon >= -82 && lon <= -35 && lat <= 10 && lat > -60) {\n        if (lat > -15)  return \"over Northern South America\";\n        if (lat > -30)  return \"over Central South America\";\n        return \"over Southern South America\";\n    }\n\n    // --- EUROPE / AFRICA / MIDDLE EAST ---\n\n    // Europe (rough West / Central / East)\n    if (lon >= -25 && lon <= 45 && lat >= 35) {\n        if (lon < 0)   return \"over Western Europe\";\n        if (lon < 25)  return \"over Central Europe\";\n        return \"over Eastern Europe\";\n    }\n\n    // Africa (North / Central / South)\n    if (lon >= -20 && lon <= 55 && lat > -35 && lat < 35) {\n        if (lat >= 15)  return \"over Northern Africa\";\n        if (lat > -5)   return \"over Central Africa\";\n        return \"over Southern Africa\";\n    }\n\n    // Middle East\n    if (lon >= 30 && lon <= 60 && lat >= 12 && lat <= 40) {\n        return \"over the Middle East\";\n    }\n\n    // --- ASIA & AUSTRALASIA ---\n\n    // Asia: West / Central / East / South / Southeast\n    if (lon >= 40 && lon <= 180 && lat > -5 && lat <= 80) {\n        // West Asia\n        if (lon >= 40 && lon < 70 && lat >= 5) {\n            return \"over Western Asia\";\n        }\n        // Central Asia\n        if (lon >= 70 && lon < 100 && lat >= 25) {\n            return \"over Central Asia\";\n        }\n        // East Asia\n        if (lon >= 100 && lon <= 150 && lat >= 20) {\n            return \"over Eastern Asia\";\n        }\n        // South Asia\n        if (lon >= 60 && lon <= 100 && lat >= 5 && lat < 25) {\n            return \"over Southern Asia\";\n        }\n        // Southeast Asia\n        if (lon >= 95 && lon <= 135 && lat >= -10 && lat < 20) {\n            return \"over Southeast Asia\";\n        }\n    }\n\n    // Australasia / Oceania\n    if (lon >= 110 && lon <= 180 && lat <= 0 && lat > -50) {\n        return \"over Australasia / Oceania\";\n    }\n\n    // --- OCEANS (handled after land so land wins when overlapping) ---\n\n    // Pacific Ocean\n    if (lon <= -130 || lon >= 150) {\n        return (lat >= 0)\n            ? \"over the North Pacific Ocean\"\n            : \"over the South Pacific Ocean\";\n    }\n\n    // Atlantic Ocean\n    if (lon > -60 && lon <= 20) {\n        return (lat >= 0)\n            ? \"over the North Atlantic Ocean\"\n            : \"over the South Atlantic Ocean\";\n    }\n\n    // Indian Ocean\n    if (lon > 20 && lon < 120 && lat < 30 && lat > -40) {\n        return \"over the Indian Ocean\";\n    }\n\n    // Fallback\n    return \"over the ocean\";\n}\n\n// Compute values\nvar latNum = safeNumber(p.lat);\nvar lonNum = safeNumber(p.lon);\nvar altKm = safeNumber(p.alt_km);\nvar velKms = safeNumber(p.vel_kms);\n\nvar altMi = altKm != null ? kmToMi(altKm) : null;\nvar velMph = velKms != null ? kmsToMph(velKms) : null;\n\nvar latTxt = latNum != null ? latNum.toFixed(2) + \"°\" : \"n/a\";\nvar lonTxt = lonNum != null ? lonNum.toFixed(2) + \"°\" : \"n/a\";\n\nvar altTxt = (altKm != null && altMi != null)\n    ? altKm.toFixed(1) + \" km (\" + altMi.toFixed(1) + \" mi)\"\n    : \"n/a\";\n\nvar speedTxt = (velKms != null && velMph != null)\n    ? Math.round(velMph).toLocaleString() + \" mph (\" + velKms.toFixed(2) + \" km/s)\"\n    : \"n/a\";\n\nvar dirDegTxt = p.azimuth != null ? safeFixed(p.azimuth, 1) + \"°\" : \"n/a\";\nvar dirCompass = degToCompass(p.azimuth);\nvar dirTxt = dirCompass === \"n/a\" ? dirDegTxt : dirDegTxt + \" (\" + dirCompass + \")\";\n\nvar elTxt = p.elevation != null ? safeFixed(p.elevation, 1) + \"°\" : \"n/a\";\nvar eclipsedTxt = (typeof p.eclipsed === \"boolean\") ? (p.eclipsed ? \"Yes\" : \"No\") : \"n/a\";\nvar localTimeTxt = p.localTime || \"n/a\";\nvar regionTxt = regionFromLatLon(p.lat, p.lon);\n\n// Popup HTML\nvar popup = `\n<b>Lat / Lon:</b> ${latTxt}, ${lonTxt}<br/>\n<b>Location:</b> ${regionTxt}<br/>\n<b>Alt:</b> ${altTxt}<br/>\n<b>Speed:</b> ${speedTxt}<br/>\n<b>Direction of travel:</b> ${dirTxt}<br/>\n<b>Elevation angle:</b> ${elTxt}<br/>\n<b>Local time:</b> ${localTimeTxt}<br/>\n<b>In Earth&#39;s shadow:</b> ${eclipsedTxt}\n`;\n\n// Tooltip text\nvar tooltip = `${p.name || \"ISS\"} — ${altTxt}, ${speedTxt}`;\n\nmsg.payload = {\n    name: p.name || \"International Space Station\",\n    lat: latNum,\n    lon: lonNum,\n    icon: \"iss\",\n    iconColor: \"#4169E1\",\n    layer: \"ISS\",\n    popup: popup,\n    tooltip: tooltip,\n\n    // Optional: heading vector on map\n    track: safeNumber(p.azimuth),            // degrees\n    speed: velKms != null ? velKms * 1000 : undefined  // m/s for worldmap vector\n};\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 860,
+        "y": 120,
+        "wires": [
+            [
+                "225ecc38.6d7094",
+                "ade5105b.5b21",
+                "d87fa476da1829d8"
+            ]
+        ]
+    },
+    {
+        "id": "225ecc38.6d7094",
+        "type": "debug",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1030,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "8800717e.7d835",
+        "type": "debug",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "x": 1030,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "2a0cd101.7a65ae",
+        "type": "http request",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "N2YO REST API (CSS)",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "https://api.n2yo.com/rest/v1/satellite/positions/48274/37.84/-122.29/0/2/&apiKey=ENTER API KEY HERE",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 350,
+        "y": 200,
+        "wires": [
+            [
+                "11cc8f68.6f2f91"
+            ]
+        ]
+    },
+    {
+        "id": "11cc8f68.6f2f91",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Detailed CSS Position",
+        "func": "// Detailed CSS (Chinese Space Station) Position\n\nif (!msg.payload || !msg.payload.positions || !msg.payload.positions[0]) {\n    node.warn(\"CSS: no position data in payload\");\n    return null;\n}\n\nvar raw = msg.payload;                // keep original response\nvar info = raw.info || {};\nvar p = raw.positions[0];\n\nvar satName = info.satname || \"Chinese Space Station\";\nvar ts = p.timestamp || Date.now() / 1000;\nvar dt = new Date(ts * 1000);\n\nmsg.payload = {\n    name: satName,\n    lat: p.satlatitude,\n    lon: p.satlongitude,\n    alt_km: p.sataltitude,     // altitude in km (from N2YO)\n    // speed in km/s (use N2YO if present, else typical CSS speed)\n    vel_kms: (p.satvelocity != null ? p.satvelocity : 7.7),\n    azimuth: p.azimuth,\n    elevation: p.elevation,\n    eclipsed: p.eclipsed,\n    timestamp: ts,\n    localTime: dt.toLocaleString(),\n    source: \"ISS\",\n    raw: raw                   // optional: keep raw response\n};\n\nreturn msg;\n\n\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 200,
+        "wires": [
+            [
+                "ca0eb5e3.d3de08"
+            ]
+        ]
+    },
+    {
+        "id": "ca0eb5e3.d3de08",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "CSS Attributes",
+        "func": "// CSS Attributes -> format for worldmap (US units + region)\n\nvar p = msg.payload || {};\nif (p.lat == null || p.lon == null) {\n    node.warn(\"CSS Attributes: missing lat/lon in payload\");\n    return null;\n}\n\n// Helpers (same as ISS function)\nfunction safeNumber(v) {\n    var n = Number(v);\n    return isFinite(n) ? n : null;\n}\n\nfunction kmToMi(km) {\n    var n = safeNumber(km);\n    if (n == null) return null;\n    return n * 0.621371;\n}\n\nfunction kmsToMph(kms) {\n    var n = safeNumber(kms);\n    if (n == null) return null;\n    return n * 2236.9356;\n}\n\nfunction safeFixed(v, dec) {\n    var n = safeNumber(v);\n    if (n == null) return \"n/a\";\n    return n.toFixed(dec);\n}\n\nfunction degToCompass(deg) {\n    var n = safeNumber(deg);\n    if (n == null) return \"n/a\";\n    var dirs = [\"N\",\"NE\",\"E\",\"SE\",\"S\",\"SW\",\"W\",\"NW\",\"N\"];\n    return dirs[Math.round(n / 45)];\n}\n\nfunction regionFromLatLon(lat, lon) {\n    lat = safeNumber(lat);\n    lon = safeNumber(lon);\n    if (lat == null || lon == null) return \"Unknown region\";\n\n    // Poles\n    if (lat > 80) return \"over the Arctic region\";\n    if (lat < -60) return \"over the Southern Ocean / near Antarctica\";\n\n    // --- AMERICAS ---\n\n    // North America sub-regions\n    if (lon >= -170 && lon <= -50 && lat >= 24) {\n        if (lon < -120) return \"over Western North America\";\n        if (lon < -90) return \"over Central North America\";\n        return \"over Eastern North America\";\n    }\n\n    // Central America\n    if (lon >= -100 && lon <= -75 && lat >= 7 && lat < 24) {\n        return \"over Central America\";\n    }\n\n    // Caribbean\n    if (lon >= -90 && lon <= -60 && lat >= 10 && lat <= 27) {\n        return \"over the Caribbean region\";\n    }\n\n    // South America (with N / Central / S split)\n    if (lon >= -82 && lon <= -35 && lat <= 10 && lat > -60) {\n        if (lat > -15) return \"over Northern South America\";\n        if (lat > -30) return \"over Central South America\";\n        return \"over Southern South America\";\n    }\n\n    // --- EUROPE / AFRICA / MIDDLE EAST ---\n\n    // Europe (rough West / Central / East)\n    if (lon >= -25 && lon <= 45 && lat >= 35) {\n        if (lon < 0) return \"over Western Europe\";\n        if (lon < 25) return \"over Central Europe\";\n        return \"over Eastern Europe\";\n    }\n\n    // Africa (North / Central / South)\n    if (lon >= -20 && lon <= 55 && lat > -35 && lat < 35) {\n        if (lat >= 15) return \"over Northern Africa\";\n        if (lat > -5) return \"over Central Africa\";\n        return \"over Southern Africa\";\n    }\n\n    // Middle East\n    if (lon >= 30 && lon <= 60 && lat >= 12 && lat <= 40) {\n        return \"over the Middle East\";\n    }\n\n    // --- ASIA & AUSTRALASIA ---\n\n    // Asia: West / Central / East / South / Southeast\n    if (lon >= 40 && lon <= 180 && lat > -5 && lat <= 80) {\n        // West Asia\n        if (lon >= 40 && lon < 70 && lat >= 5) {\n            return \"over Western Asia\";\n        }\n        // Central Asia\n        if (lon >= 70 && lon < 100 && lat >= 25) {\n            return \"over Central Asia\";\n        }\n        // East Asia\n        if (lon >= 100 && lon <= 150 && lat >= 20) {\n            return \"over Eastern Asia\";\n        }\n        // South Asia\n        if (lon >= 60 && lon <= 100 && lat >= 5 && lat < 25) {\n            return \"over Southern Asia\";\n        }\n        // Southeast Asia\n        if (lon >= 95 && lon <= 135 && lat >= -10 && lat < 20) {\n            return \"over Southeast Asia\";\n        }\n    }\n\n    // Australasia / Oceania\n    if (lon >= 110 && lon <= 180 && lat <= 0 && lat > -50) {\n        return \"over Australasia / Oceania\";\n    }\n\n    // --- OCEANS (handled after land so land wins when overlapping) ---\n\n    // Pacific Ocean\n    if (lon <= -130 || lon >= 150) {\n        return (lat >= 0)\n            ? \"over the North Pacific Ocean\"\n            : \"over the South Pacific Ocean\";\n    }\n\n    // Atlantic Ocean\n    if (lon > -60 && lon <= 20) {\n        return (lat >= 0)\n            ? \"over the North Atlantic Ocean\"\n            : \"over the South Atlantic Ocean\";\n    }\n\n    // Indian Ocean\n    if (lon > 20 && lon < 120 && lat < 30 && lat > -40) {\n        return \"over the Indian Ocean\";\n    }\n\n    // Fallback\n    return \"over the ocean\";\n}\n\nvar latNum = safeNumber(p.lat);\nvar lonNum = safeNumber(p.lon);\nvar altKm = safeNumber(p.alt_km);\nvar velKms = safeNumber(p.vel_kms);\n\nvar altMi = altKm != null ? kmToMi(altKm) : null;\nvar velMph = velKms != null ? kmsToMph(velKms) : null;\n\nvar latTxt = latNum != null ? latNum.toFixed(2) + \"°\" : \"n/a\";\nvar lonTxt = lonNum != null ? lonNum.toFixed(2) + \"°\" : \"n/a\";\n\nvar altTxt = (altKm != null && altMi != null)\n    ? altKm.toFixed(1) + \" km (\" + altMi.toFixed(1) + \" mi)\"\n    : \"n/a\";\n\nvar speedTxt = (velKms != null && velMph != null)\n    ? Math.round(velMph).toLocaleString() + \" mph (\" + velKms.toFixed(2) + \" km/s)\"\n    : \"n/a\";\n\nvar dirDegTxt = p.azimuth != null ? safeFixed(p.azimuth, 1) + \"°\" : \"n/a\";\nvar dirCompass = degToCompass(p.azimuth);\nvar dirTxt = dirCompass === \"n/a\" ? dirDegTxt : dirDegTxt + \" (\" + dirCompass + \")\";\n\nvar elTxt  = p.elevation != null ? safeFixed(p.elevation, 1) + \"°\" : \"n/a\";\nvar eclipsedTxt = (typeof p.eclipsed === \"boolean\") ? (p.eclipsed ? \"Yes\" : \"No\") : \"n/a\";\nvar localTimeTxt = p.localTime || \"n/a\";\nvar regionTxt = regionFromLatLon(p.lat, p.lon);\n\nvar popup = `\n<b>Lat / Lon:</b> ${latTxt}, ${lonTxt}<br/>\n<b>Location:</b> ${regionTxt}<br/>\n<b>Alt:</b> ${altTxt}<br/>\n<b>Speed:</b> ${speedTxt}<br/>\n<b>Direction of travel:</b> ${dirTxt}<br/>\n<b>Elevation angle:</b> ${elTxt}<br/>\n<b>Local time:</b> ${localTimeTxt}<br/>\n<b>In Earth&#39;s shadow:</b> ${eclipsedTxt}\n`;\n\nvar tooltip = `${p.name || \"CSS\"} — ${altTxt}, ${speedTxt}`;\n\nmsg.payload = {\n    name: p.name || \"Chinese Space Station\",\n    lat: latNum,\n    lon: lonNum,\n    icon: \"iss\",\n    iconColor: \"red\",\n    layer: \"CSS\",\n    popup: popup,\n    tooltip: tooltip,\n    track: safeNumber(p.azimuth),\n    speed: velKms != null ? velKms * 1000 : undefined\n};\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 860,
+        "y": 200,
+        "wires": [
+            [
+                "8800717e.7d835",
+                "ade5105b.5b21",
+                "5fab2fe8ca680c3f"
+            ]
+        ]
+    },
+    {
+        "id": "5fab2fe8ca680c3f",
+        "type": "worldmap-tracks",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "CSS Tracks",
+        "depth": 20,
+        "layer": "combined",
+        "smooth": false,
+        "x": 1050,
+        "y": 200,
+        "wires": [
+            [
+                "ade5105b.5b21"
+            ]
+        ]
+    },
+    {
+        "id": "d87fa476da1829d8",
+        "type": "worldmap-tracks",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "ISS Tracks",
+        "depth": 20,
+        "layer": "combined",
+        "smooth": false,
+        "x": 1050,
+        "y": 120,
+        "wires": [
+            [
+                "ade5105b.5b21"
+            ]
+        ]
+    },
+    {
+        "id": "hub-http",
+        "type": "http request",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "N2YO REST API (Hubble)",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "https://api.n2yo.com/rest/v1/satellite/positions/20580/37.84/-122.29/0/2/&apiKey=ENTER API KEY HERE",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 350,
+        "y": 280,
+        "wires": [
+            [
+                "hub-detailed"
+            ]
+        ]
+    },
+    {
+        "id": "hub-detailed",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Detailed Hubble Position",
+        "func": "// Detailed Hubble Position\n\nif (!msg.payload || !msg.payload.positions || !msg.payload.positions[0]) {\n    node.warn(\"Hubble: no position data in payload\");\n    return null;\n}\n\nvar raw = msg.payload;\nvar info = raw.info || {};\nvar p = raw.positions[0];\n\nvar satName = info.satname || \"Hubble Space Telescope\";\nvar ts = p.timestamp || Date.now() / 1000;\nvar dt = new Date(ts * 1000);\n\nmsg.payload = {\n    name: satName,\n    lat: p.satlatitude,\n    lon: p.satlongitude,\n    alt_km: p.sataltitude,\n    vel_kms: (p.satvelocity != null ? p.satvelocity : 7.5), // fallback\n    azimuth: p.azimuth,\n    elevation: p.elevation,\n    eclipsed: p.eclipsed,\n    timestamp: ts,\n    localTime: dt.toLocaleString(),\n    source: \"Hubble\",\n    raw: raw\n};\n\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 280,
+        "wires": [
+            [
+                "hub-attr"
+            ]
+        ]
+    },
+    {
+        "id": "hub-attr",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Hubble Attributes",
+        "func": "// Hubble Attributes -> format for worldmap (US units + region)\n\nvar p = msg.payload || {};\nif (p.lat == null || p.lon == null) {\n    node.warn(\"Hubble Attributes: missing lat/lon in payload\");\n    return null;\n}\n\nfunction safeNumber(v) {\n    var n = Number(v);\n    return isFinite(n) ? n : null;\n}\n\nfunction kmToMi(km) {\n    var n = safeNumber(km);\n    if (n == null) return null;\n    return n * 0.621371;\n}\n\nfunction kmsToMph(kms) {\n    var n = safeNumber(kms);\n    if (n == null) return null;\n    return n * 2236.9356;\n}\n\nfunction safeFixed(v, dec) {\n    var n = safeNumber(v);\n    if (n == null) return \"n/a\";\n    return n.toFixed(dec);\n}\n\nfunction degToCompass(deg) {\n    var n = safeNumber(deg);\n    if (n == null) return \"n/a\";\n    var dirs = [\"N\",\"NE\",\"E\",\"SE\",\"S\",\"SW\",\"W\",\"NW\",\"N\"];\n    return dirs[Math.round(n / 45)];\n}\n\nfunction regionFromLatLon(lat, lon) {\n    lat = safeNumber(lat);\n    lon = safeNumber(lon);\n    if (lat == null || lon == null) return \"Unknown region\";\n\n    // Poles\n    if (lat > 80) return \"over the Arctic region\";\n    if (lat < -60) return \"over the Southern Ocean / near Antarctica\";\n\n    // --- AMERICAS ---\n\n    // North America sub-regions\n    if (lon >= -170 && lon <= -50 && lat >= 24) {\n        if (lon < -120) return \"over Western North America\";\n        if (lon < -90)  return \"over Central North America\";\n        return \"over Eastern North America\";\n    }\n\n    // Central America\n    if (lon >= -100 && lon <= -75 && lat >= 7 && lat < 24) {\n        return \"over Central America\";\n    }\n\n    // Caribbean\n    if (lon >= -90 && lon <= -60 && lat >= 10 && lat <= 27) {\n        return \"over the Caribbean region\";\n    }\n\n    // South America (with N / Central / S split)\n    if (lon >= -82 && lon <= -35 && lat <= 10 && lat > -60) {\n        if (lat > -15)  return \"over Northern South America\";\n        if (lat > -30)  return \"over Central South America\";\n        return \"over Southern South America\";\n    }\n\n    // --- EUROPE / AFRICA / MIDDLE EAST ---\n\n    // Europe (rough West / Central / East)\n    if (lon >= -25 && lon <= 45 && lat >= 35) {\n        if (lon < 0)   return \"over Western Europe\";\n        if (lon < 25)  return \"over Central Europe\";\n        return \"over Eastern Europe\";\n    }\n\n    // Africa (North / Central / South)\n    if (lon >= -20 && lon <= 55 && lat > -35 && lat < 35) {\n        if (lat >= 15)  return \"over Northern Africa\";\n        if (lat > -5)   return \"over Central Africa\";\n        return \"over Southern Africa\";\n    }\n\n    // Middle East\n    if (lon >= 30 && lon <= 60 && lat >= 12 && lat <= 40) {\n        return \"over the Middle East\";\n    }\n\n    // --- ASIA & AUSTRALASIA ---\n\n    // Asia: West / Central / East / South / Southeast\n    if (lon >= 40 && lon <= 180 && lat > -5 && lat <= 80) {\n        // West Asia\n        if (lon >= 40 && lon < 70 && lat >= 5) {\n            return \"over Western Asia\";\n        }\n        // Central Asia\n        if (lon >= 70 && lon < 100 && lat >= 25) {\n            return \"over Central Asia\";\n        }\n        // East Asia\n        if (lon >= 100 && lon <= 150 && lat >= 20) {\n            return \"over Eastern Asia\";\n        }\n        // South Asia\n        if (lon >= 60 && lon <= 100 && lat >= 5 && lat < 25) {\n            return \"over Southern Asia\";\n        }\n        // Southeast Asia\n        if (lon >= 95 && lon <= 135 && lat >= -10 && lat < 20) {\n            return \"over Southeast Asia\";\n        }\n    }\n\n    // Australasia / Oceania\n    if (lon >= 110 && lon <= 180 && lat <= 0 && lat > -50) {\n        return \"over Australasia / Oceania\";\n    }\n\n    // --- OCEANS (handled after land so land wins when overlapping) ---\n\n    // Pacific Ocean\n    if (lon <= -130 || lon >= 150) {\n        return (lat >= 0)\n            ? \"over the North Pacific Ocean\"\n            : \"over the South Pacific Ocean\";\n    }\n\n    // Atlantic Ocean\n    if (lon > -60 && lon <= 20) {\n        return (lat >= 0)\n            ? \"over the North Atlantic Ocean\"\n            : \"over the South Atlantic Ocean\";\n    }\n\n    // Indian Ocean\n    if (lon > 20 && lon < 120 && lat < 30 && lat > -40) {\n        return \"over the Indian Ocean\";\n    }\n\n    // Fallback\n    return \"over the ocean\";\n}\n\nvar latNum = safeNumber(p.lat);\nvar lonNum = safeNumber(p.lon);\nvar altKm = safeNumber(p.alt_km);\nvar velKms = safeNumber(p.vel_kms);\n\nvar altMi = altKm != null ? kmToMi(altKm) : null;\nvar velMph = velKms != null ? kmsToMph(velKms) : null;\n\nvar latTxt = latNum != null ? latNum.toFixed(2) + \"°\" : \"n/a\";\nvar lonTxt = lonNum != null ? lonNum.toFixed(2) + \"°\" : \"n/a\";\n\nvar altTxt = (altKm != null && altMi != null)\n    ? altKm.toFixed(1) + \" km (\" + altMi.toFixed(1) + \" mi)\"\n    : \"n/a\";\n\nvar speedTxt = (velKms != null && velMph != null)\n    ? Math.round(velMph).toLocaleString() + \" mph (\" + velKms.toFixed(2) + \" km/s)\"\n    : \"n/a\";\n\nvar dirDegTxt = p.azimuth != null ? safeFixed(p.azimuth, 1) + \"°\" : \"n/a\";\nvar dirCompass = degToCompass(p.azimuth);\nvar dirTxt = dirCompass === \"n/a\" ? dirDegTxt : dirDegTxt + \" (\" + dirCompass + \")\";\n\nvar elTxt  = p.elevation != null ? safeFixed(p.elevation, 1) + \"°\" : \"n/a\";\nvar eclipsedTxt = (typeof p.eclipsed === \"boolean\") ? (p.eclipsed ? \"Yes\" : \"No\") : \"n/a\";\nvar localTimeTxt = p.localTime || \"n/a\";\nvar regionTxt = regionFromLatLon(p.lat, p.lon);\n\nvar popup = `\n<b>Lat / Lon:</b> ${latTxt}, ${lonTxt}<br/>\n<b>Location:</b> ${regionTxt}<br/>\n<b>Alt:</b> ${altTxt}<br/>\n<b>Speed:</b> ${speedTxt}<br/>\n<b>Direction of travel:</b> ${dirTxt}<br/>\n<b>Elevation angle:</b> ${elTxt}<br/>\n<b>Local time:</b> ${localTimeTxt}<br/>\n<b>In Earth&#39;s shadow:</b> ${eclipsedTxt}\n`;\n\nvar tooltip = `${p.name || \"Hubble\"} — ${altTxt}, ${speedTxt}`;\n\nmsg.payload = {\n    name: p.name || \"Hubble Space Telescope\",\n    lat: latNum,\n    lon: lonNum,\n    icon: \"satellite\",\n    iconColor: \"#FFD700\",   // gold for Hubble\n    layer: \"Hubble\",\n    popup: popup,\n    tooltip: tooltip,\n    track: safeNumber(p.azimuth),\n    speed: velKms != null ? velKms * 1000 : undefined\n};\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 280,
+        "wires": [
+            [
+                "224f48c1792b5249",
+                "9aa4eae1864e5fb9",
+                "ade5105b.5b21"
+            ]
+        ]
+    },
+    {
+        "id": "jwst-http",
+        "type": "http request",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "N2YO REST API (Chandra)",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "https://api.n2yo.com/rest/v1/satellite/positions/25867/37.84/-122.29/0/2/&apiKey=ENTER API KEY HERE",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 360,
+        "y": 360,
+        "wires": [
+            [
+                "jwst-detailed"
+            ]
+        ]
+    },
+    {
+        "id": "jwst-detailed",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Detailed Chandra Position",
+        "func": "// Detailed Chandra Position\n\nif (!msg.payload || !msg.payload.positions || !msg.payload.positions[0]) {\n    node.warn(\"Chandra: no position data in payload\");\n    return null;\n}\n\nvar raw = msg.payload;\nvar info = raw.info || {};\nvar p = raw.positions[0];\n\nvar satName = info.satname || \"Chandra X-ray Observatory\";\nvar ts = p.timestamp || Date.now() / 1000;\nvar dt = new Date(ts * 1000);\n\nmsg.payload = {\n    name: satName,\n    lat: p.satlatitude,\n    lon: p.satlongitude,\n    alt_km: p.sataltitude,\n    // Chandra’s speed; fallback if N2YO doesn't send satvelocity\n    vel_kms: (p.satvelocity != null ? p.satvelocity : 7.5),\n    azimuth: p.azimuth,\n    elevation: p.elevation,\n    eclipsed: p.eclipsed,\n    timestamp: ts,\n    localTime: dt.toLocaleString(),\n    source: \"Chandra\",\n    raw: raw\n};\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 360,
+        "wires": [
+            [
+                "jwst-attr"
+            ]
+        ]
+    },
+    {
+        "id": "jwst-attr",
+        "type": "function",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Chandra Attributes",
+        "func": "// Chandra Attributes -> format for worldmap (US units + region)\n\nvar p = msg.payload || {};\nif (p.lat == null || p.lon == null) {\n    node.warn(\"Chandra Attributes: missing lat/lon in payload\");\n    return null;\n}\n\nfunction safeNumber(v) {\n    var n = Number(v);\n    return isFinite(n) ? n : null;\n}\n\nfunction kmToMi(km) {\n    var n = safeNumber(km);\n    if (n == null) return null;\n    return n * 0.621371;\n}\n\nfunction kmsToMph(kms) {\n    var n = safeNumber(kms);\n    if (n == null) return null;\n    return n * 2236.9356;\n}\n\nfunction safeFixed(v, dec) {\n    var n = safeNumber(v);\n    if (n == null) return \"n/a\";\n    return n.toFixed(dec);\n}\n\nfunction degToCompass(deg) {\n    var n = safeNumber(deg);\n    if (n == null) return \"n/a\";\n    var dirs = [\"N\",\"NE\",\"E\",\"SE\",\"S\",\"SW\",\"W\",\"NW\",\"N\"];\n    return dirs[Math.round(n / 45)];\n}\n\nfunction regionFromLatLon(lat, lon) {\n    lat = safeNumber(lat);\n    lon = safeNumber(lon);\n    if (lat == null || lon == null) return \"Unknown region\";\n\n    // Poles\n    if (lat > 80) return \"over the Arctic region\";\n    if (lat < -60) return \"over the Southern Ocean / near Antarctica\";\n\n    // --- AMERICAS ---\n\n    // North America sub-regions\n    if (lon >= -170 && lon <= -50 && lat >= 24) {\n        if (lon < -120) return \"over Western North America\";\n        if (lon < -90)  return \"over Central North America\";\n        return \"over Eastern North America\";\n    }\n\n    // Central America\n    if (lon >= -100 && lon <= -75 && lat >= 7 && lat < 24) {\n        return \"over Central America\";\n    }\n\n    // Caribbean\n    if (lon >= -90 && lon <= -60 && lat >= 10 && lat <= 27) {\n        return \"over the Caribbean region\";\n    }\n\n    // South America (with N / Central / S split)\n    if (lon >= -82 && lon <= -35 && lat <= 10 && lat > -60) {\n        if (lat > -15)  return \"over Northern South America\";\n        if (lat > -30)  return \"over Central South America\";\n        return \"over Southern South America\";\n    }\n\n    // --- EUROPE / AFRICA / MIDDLE EAST ---\n\n    // Europe (rough West / Central / East)\n    if (lon >= -25 && lon <= 45 && lat >= 35) {\n        if (lon < 0)   return \"over Western Europe\";\n        if (lon < 25)  return \"over Central Europe\";\n        return \"over Eastern Europe\";\n    }\n\n    // Africa (North / Central / South)\n    if (lon >= -20 && lon <= 55 && lat > -35 && lat < 35) {\n        if (lat >= 15)  return \"over Northern Africa\";\n        if (lat > -5)   return \"over Central Africa\";\n        return \"over Southern Africa\";\n    }\n\n    // Middle East\n    if (lon >= 30 && lon <= 60 && lat >= 12 && lat <= 40) {\n        return \"over the Middle East\";\n    }\n\n    // --- ASIA & AUSTRALASIA ---\n\n    // Asia: West / Central / East / South / Southeast\n    if (lon >= 40 && lon <= 180 && lat > -5 && lat <= 80) {\n        // West Asia\n        if (lon >= 40 && lon < 70 && lat >= 5) {\n            return \"over Western Asia\";\n        }\n        // Central Asia\n        if (lon >= 70 && lon < 100 && lat >= 25) {\n            return \"over Central Asia\";\n        }\n        // East Asia\n        if (lon >= 100 && lon <= 150 && lat >= 20) {\n            return \"over Eastern Asia\";\n        }\n        // South Asia\n        if (lon >= 60 && lon <= 100 && lat >= 5 && lat < 25) {\n            return \"over Southern Asia\";\n        }\n        // Southeast Asia\n        if (lon >= 95 && lon <= 135 && lat >= -10 && lat < 20) {\n            return \"over Southeast Asia\";\n        }\n    }\n\n    // Australasia / Oceania\n    if (lon >= 110 && lon <= 180 && lat <= 0 && lat > -50) {\n        return \"over Australasia / Oceania\";\n    }\n\n    // --- OCEANS (handled after land so land wins when overlapping) ---\n\n    // Pacific Ocean\n    if (lon <= -130 || lon >= 150) {\n        return (lat >= 0)\n            ? \"over the North Pacific Ocean\"\n            : \"over the South Pacific Ocean\";\n    }\n\n    // Atlantic Ocean\n    if (lon > -60 && lon <= 20) {\n        return (lat >= 0)\n            ? \"over the North Atlantic Ocean\"\n            : \"over the South Atlantic Ocean\";\n    }\n\n    // Indian Ocean\n    if (lon > 20 && lon < 120 && lat < 30 && lat > -40) {\n        return \"over the Indian Ocean\";\n    }\n\n    // Fallback\n    return \"over the ocean\";\n}\n\nvar latNum = safeNumber(p.lat);\nvar lonNum = safeNumber(p.lon);\nvar altKm = safeNumber(p.alt_km);\nvar velKms = safeNumber(p.vel_kms);\n\nvar altMi = altKm != null ? kmToMi(altKm) : null;\nvar velMph = velKms != null ? kmsToMph(velKms) : null;\n\nvar latTxt = latNum != null ? latNum.toFixed(2) + \"°\" : \"n/a\";\nvar lonTxt = lonNum != null ? lonNum.toFixed(2) + \"°\" : \"n/a\";\n\nvar altTxt = (altKm != null && altMi != null)\n    ? altKm.toFixed(1) + \" km (\" + altMi.toFixed(1) + \" mi)\"\n    : \"n/a\";\n\nvar speedTxt = (velKms != null && velMph != null)\n    ? Math.round(velMph).toLocaleString() + \" mph (\" + velKms.toFixed(2) + \" km/s)\"\n    : \"n/a\";\n\nvar dirDegTxt = p.azimuth != null ? safeFixed(p.azimuth, 1) + \"°\" : \"n/a\";\nvar dirCompass = degToCompass(p.azimuth);\nvar dirTxt = dirCompass === \"n/a\" ? dirDegTxt : dirDegTxt + \" (\" + dirCompass + \")\";\n\nvar elTxt  = p.elevation != null ? safeFixed(p.elevation, 1) + \"°\" : \"n/a\";\nvar eclipsedTxt = (typeof p.eclipsed === \"boolean\") ? (p.eclipsed ? \"Yes\" : \"No\") : \"n/a\";\nvar localTimeTxt = p.localTime || \"n/a\";\nvar regionTxt = regionFromLatLon(p.lat, p.lon);\n\nvar popup = `\n<b>Lat / Lon:</b> ${latTxt}, ${lonTxt}<br/>\n<b>Location:</b> ${regionTxt}<br/>\n<b>Alt:</b> ${altTxt}<br/>\n<b>Speed:</b> ${speedTxt}<br/>\n<b>Direction of travel:</b> ${dirTxt}<br/>\n<b>Elevation angle:</b> ${elTxt}<br/>\n<b>Local time:</b> ${localTimeTxt}<br/>\n<b>In Earth&#39;s shadow:</b> ${eclipsedTxt}\n`;\n\nvar tooltip = `${p.name || \"Chandra\"} — ${altTxt}, ${speedTxt}`;\n\nmsg.payload = {\n    name: p.name || \"Chandra X-ray Observatory\",\n    lat: latNum,\n    lon: lonNum,\n    icon: \"satellite\",\n    iconColor: \"#FF671F\",   // Chandra = Saffron,\n    layer: \"Chandra\",\n    popup: popup,\n    tooltip: tooltip,\n    track: safeNumber(p.azimuth),\n    speed: velKms != null ? velKms * 1000 : undefined\n};\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 360,
+        "wires": [
+            [
+                "36b3dff5afb5ed58",
+                "02fc2940b9783c2d",
+                "ade5105b.5b21"
+            ]
+        ]
+    },
+    {
+        "id": "224f48c1792b5249",
+        "type": "worldmap-tracks",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Hubble Tracks",
+        "depth": 20,
+        "layer": "combined",
+        "smooth": false,
+        "x": 1060,
+        "y": 280,
+        "wires": [
+            [
+                "ade5105b.5b21"
+            ]
+        ]
+    },
+    {
+        "id": "36b3dff5afb5ed58",
+        "type": "worldmap-tracks",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "Chandra Tracks",
+        "depth": 20,
+        "layer": "combined",
+        "smooth": false,
+        "x": 1060,
+        "y": 360,
+        "wires": [
+            [
+                "ade5105b.5b21"
+            ]
+        ]
+    },
+    {
+        "id": "9aa4eae1864e5fb9",
+        "type": "debug",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1030,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "02fc2940b9783c2d",
+        "type": "debug",
+        "z": "9e9d2a92.fa7bd8",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1030,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "f0db4bbb4055146e",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-web-worldmap": "5.5.4"
+        }
+    }
+]
